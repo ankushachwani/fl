@@ -282,6 +282,11 @@ def main():
     # Save training history plot
     if config['system']['save_plots']:
         plot_training_history(server)
+    
+    # Save the trained global model
+    model_path = 'global_model.pth'
+    torch.save(server.global_model.state_dict(), model_path)
+    print(f"\nSaved trained model to: {model_path}")
 
     print("\n" + "="*60)
     print("Experiment completed successfully!")
@@ -293,6 +298,11 @@ def main():
         print("  - data_distribution.png (client data distribution)")
     if os.path.exists('training_history.png'):
         print("  - training_history.png (training curves)")
+    if os.path.exists(model_path):
+        print(f"  - {model_path} (trained global model)")
+    
+    print("\nNext step: Run model inversion attacks using:")
+    print("  python run_attacks.py --attack all")
 
     return server, clients
 

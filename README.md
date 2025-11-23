@@ -1,106 +1,181 @@
-# Federated Learning System
+# Federated Learning with Model Inversion Attacks
 
-Basic implementation of federated learning for model inversion attack research. Built from scratch using PyTorch.
+Implementation of federated learning for privacy research. Trains a model using federated averaging, then demonstrates three different attacks that can reconstruct training data from the shared model updates.
 
-## What This Does
+## Quick Start
 
-Simulates multiple clients training a shared model without directly sharing their data. Each client trains locally, then sends only model weights to a central server. The server aggregates these weights and sends back an updated global model.
-
-Uses MNIST digit classification as the test case.
-
-## Setup
-
-Install dependencies:
 ```bash
+# Install dependencies
 pip install -r requirements.txt
+
+# Train the model
+python main.py --config standard
+
+# Run all three attacks
+python run_all_attacks.py
 ```
 
-## Running It
+Results appear in `attack_results/` showing reconstructed images from each attack method.
 
-Three config options depending on how many clients are required:
+## What's Implemented
+
+**Federated Learning System**
+- Multiple clients train locally on their own data
+- Only model updates get shared with central server  
+- Server aggregates updates using FedAvg algorithm
+- Tested on MNIST digit classification
+
+**Three Privacy Attacks**
+1. **Gradient Inversion (iDLG)** - Recovers training samples from shared gradients
+2. **Model Inversion** - Generates class representatives by maximizing model confidence
+3. **GAN-based Inversion** - Uses a generator network to create realistic samples
+
+All three attacks work on the trained federated model and show different ways training data can leak even when data isn't directly shared.
+
+## Training the Model
+
+Choose config based on how thorough you want to be:
 
 ```bash
 # Quick test - 3 clients, 3 rounds
 python main.py --config quick
 
-# Normal run - 5 clients, 10 rounds 
+# Standard - 5 clients, 10 rounds (recommended)
 python main.py --config standard
 
-# Full experiment - 10 clients, 20 rounds
+# Extensive - 10 clients, 20 rounds
 python main.py --config extensive
 ```
 
-## Configuration Details
+Training takes 5-15 minutes depending on config. Creates `global_model.pth` when done.
 
-You can tweak settings in `config.py`, but here are the defaults:
+**Config Details:**
+- Quick: 3 clients, 3 rounds, 2 local epochs
+- Standard: 5 clients, 10 rounds, 5 local epochs  
+- Extensive: 10 clients, 20 rounds, 10 local epochs
 
-**Quick Test:**
-- Clients: 3
-- Communication rounds: 3
-- Local epochs per round: 2
-- Batch size: 64
-- Learning rate: 0.01
-
-**Standard (default):**
-- Clients: 5
-- Communication rounds: 10
-- Local epochs per round: 5
-- Batch size: 64
-- Learning rate: 0.01
-
-**Extensive:**
-- Clients: 10
-- Communication rounds: 20
-- Local epochs per round: 10
-- Batch size: 64
-- Learning rate: 0.01
+All use batch size 64 and learning rate 0.01.
 
 ## Data Distribution
 
-You can simulate two scenarios in `config.py`:
+Edit `config.py` to change how data splits across clients:
 
-**IID (default):** Data is randomly split across clients. Each client has similar data distribution.
-
-**Non-IID:** Each client only gets data from 2 (out of 10) digit classes. More realistic - simulates clients with biased/specialized data.
-
-Change this:
 ```python
-'data_distribution': 'iid',  # or 'non_iid'
+'data_distribution': 'iid',  # uniform random split
+# or
+'data_distribution': 'non_iid',  # each client gets only 2 digit classes
 ```
 
-## What You Get
+Non-IID is more realistic since real clients typically have biased data.
 
-After running, you'll see:
-- Console output showing training progress for each round
-- `data_distribution.png` - visualization of how data is split across clients
-- `training_history.png` - accuracy and loss curves over training rounds
+## Running Attacks
 
-Expected accuracy: ~95-98% after 10 rounds on MNIST.
+The `run_all_attacks.py` script runs all three attacks in sequence:
+
+```bash
+python run_all_attacks.py
+```
+
+Takes about 20-30 minutes total. You'll see:
+- Gradient Inversion attacking 10 samples
+- Model Inversion generating all 10 digit classes
+- GAN training then generating all 10 classes
+
+### What Each Attack Does
+
+**Gradient Inversion (iDLG)**
+- Intercepts gradients from one training batch
+- Uses analytical method to recover the label
+- Optimizes dummy input until its gradients match the real ones
+- Works best for batch size 1, can reconstruct nearly exact images
+
+**Model Inversion**
+- Starts from random noise for each digit class
+- Runs gradient ascent to maximize model confidence for that class
+- Uses regularization (total variation + L2) to keep images realistic
+- Shows what the model "thinks" each digit should look like
+
+**GAN-based Inversion**  
+- Trains a generator network on MNIST data
+- For each class, optimizes the latent code to maximize model confidence
+- Generator produces realistic images that fool the classifier
+- Slowest but produces most realistic results
+
+### Results
+
+Check `attack_results/` for three PNG files:
+- `gradient_inversion_idlg.png` - 10 reconstructed samples with recovered labels
+- `model_inversion_all.png` - One representative image per digit class (0-9)
+- `gan_inversion_all.png` - GAN-generated representatives for each class
 
 ## Project Structure
 
 ```
-.
-├── main.py              # Main script to run experiments
-├── config.py            # All configuration parameters
-├── requirements.txt     # Python dependencies
-├── data/
-│   └── MNIST/          # Dataset (auto-downloaded)
-└── src/
-    ├── client.py       # FederatedClient class
-    ├── server.py       # FederatedServer class
-    ├── model.py        # SimpleCNN model architecture
-    └── utils.py        # Data partitioning and visualization
+fl/
+├── main.py                  # Train federated learning model
+├── run_all_attacks.py       # Run all three attacks
+├── config.py               # Configuration settings
+├── global_model.pth        # Trained model (created after training)
+├── src/
+│   ├── client.py          # Client training logic
+│   ├── server.py          # Server aggregation logic
+│   ├── model.py           # CNN architecture
+│   ├── utils.py           # Data handling
+│   └── attacks/
+│       ├── gan_inversion.py    # GAN attack implementation
+│       └── visualization.py    # Plot results
+└── attack_results/         # Attack outputs (created when attacks run)
 ```
 
 ## Model Architecture
 
-Simple CNN with:
-- 2 convolutional layers (32 and 64 filters)
-- 2 max pooling layers
-- 2 fully connected layers (128 hidden units)
-- Dropout for regularization
+Simple CNN for MNIST:
+- Conv layer: 1→32 channels, 3x3 kernel
+- MaxPool 2x2
+- Conv layer: 32→64 channels, 3x3 kernel  
+- MaxPool 2x2
+- FC layer: 1024→128
+- Dropout 0.5
+- FC layer: 128→10 (output)
 
-## Next Steps
+Gets about 95-98% accuracy after training.
 
-This is the baseline. The plan is to implement model inversion attacks to see if we can reconstruct training images from the shared model weights. 
+## How the Attacks Work
+
+**Gradient Inversion** matches gradients. If you have gradients ∇W from a batch, find dummy data x' where gradients of x' equal ∇W. Minimize ||∇W' - ∇W||² by adjusting x'.
+
+**Model Inversion** maximizes confidence. For class c, find input x that maximizes P(y=c|x) using gradient ascent. Add regularization so images don't look like noise.
+
+**GAN Inversion** trains a generator G first, then optimizes latent code z so G(z) has high confidence for target class. Generator keeps images realistic.
+
+## Expected Runtime
+
+On regular CPU:
+- Training (standard): ~10 minutes
+- Gradient inversion: ~3 minutes  
+- Model inversion: ~8 minutes
+- GAN training + inversion: ~15 minutes
+- Total: ~35 minutes start to finish
+
+GPU speeds things up 3-5x.
+
+## Papers Implemented
+
+**Gradient Inversion:**  
+"Deep Leakage from Gradients" by Zhu et al., NeurIPS 2019  
+https://arxiv.org/abs/1906.08935
+
+Improved version (iDLG): "iDLG: Improved Deep Leakage from Gradients" by Zhao et al., 2020  
+https://arxiv.org/abs/2001.02610
+
+**Model Inversion:**  
+"Model Inversion Attacks that Exploit Confidence Information" by Fredrikson et al., CCS 2015  
+https://dl.acm.org/doi/10.1145/2810103.2813677
+
+**GAN-based:**  
+"The Secret Revealer: Generative Model-Inversion Attacks" by Zhang et al., CVPR 2020  
+https://arxiv.org/abs/1911.07135
+
+## Why This Matters
+
+Shows that federated learning isn't automatically private. Even though clients never share raw data, the model updates (gradients/weights) can leak information about training samples. This is the whole point of the research - understanding these privacy risks so we can build better defenses.
